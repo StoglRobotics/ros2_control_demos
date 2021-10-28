@@ -134,6 +134,8 @@ admittance_controller:
       - position
       - velocity
 
+    enable_parameter_update_without_reactivation: false
+
     ft_sensor_name: tcp_fts_sensor
     use_joint_commands_as_input: true
     #joint_limiter_type: "joint_limits/SimpleJointLimiter"
@@ -156,7 +158,7 @@ admittance_controller:
     endeffector_frame: tool0
     control_frame: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
     fixed_world_frame: base_link  # Gravity points down (neg. Z) in this frame (Usually: world or base_link)
-    sensor_frame: tool0  # Wrench measurements are in this frame
+    sensor_frame: ft_frame  # Wrench measurements are in this frame
 
     admittance:
       selected_axes:
@@ -200,10 +202,10 @@ admittance_controller:
         params:
           CoG_x: 0.0
           CoG_y: 0.0
-          CoG_z: 0.0
+          CoG_z: 0.1
           force: 0.0        # mass * 9.81
           force_frame: wrist_3_link
-          sensor_frame: tool0
+          sensor_frame: ft_frame
           world_frame: base_link
 
       filter2:
@@ -215,7 +217,7 @@ admittance_controller:
           CoG_z: 0.0
           force: 0.0        # mass * 9.81
           force_frame: wrist_3_link
-          sensor_frame: tool0
+          sensor_frame: ft_frame
           world_frame: base_link
 
 
