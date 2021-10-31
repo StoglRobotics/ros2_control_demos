@@ -1,5 +1,10 @@
 repositories:
 
+  control_toolbox:
+    type: git
+    url: https://github.com/ros-controls/control_toolbox.git
+    verstion: demo-admittance-controller-delete-when-paramhandler-gravity-comp-merged
+
   control_msgs: # Branch: rolling/add-addmittance-controller-state
     type: git
     url: https://github.com/nbbrooks/control_msgs.git
@@ -9,11 +14,6 @@ repositories:
     type: git
     url: https://github.com/JafarAbdi/geometry2.git
     version: 2888c23b97cb76674129314cc648b5b355bda3f4  # Add tomsg conversion for geometry_msgs/Transform
-
-  iirob_filters:  # Branch: ros2
-    type: git
-    url: https://github.com/nbbrooks/iirob_filters.git
-    version: d0c9a21672264ae9506686de9ff928e6ada96f15  # Changes for Galactic/Rolling
 
   ros2_control:
     type: git

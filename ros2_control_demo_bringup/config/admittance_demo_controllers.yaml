@@ -197,24 +197,26 @@ admittance_controller:
 
     input_wrench_filter_chain:
       filter1:
-        type: iirob_filters/GravityCompensatorWrench
+        type: control_filters/GravityCompensationWrench
         name: wrist_gravity_compensation
         params:
-          CoG_x: 0.0
-          CoG_y: 0.0
-          CoG_z: 0.1
+          CoG:
+            x: 0.0
+            y: 0.0
+            z: 0.1
           force: 0.0        # mass * 9.81
           force_frame: wrist_3_link
           sensor_frame: ft_frame
           world_frame: base_link
 
       filter2:
-        type: iirob_filters/GravityCompensatorWrench
+        type: control_filters/GravityCompensationWrench
         name: tool_gravity_compensation
         params:
-          CoG_x: 0.0
-          CoG_y: 0.0
-          CoG_z: 0.0
+          CoG:
+            x: 0.0
+            y: 0.0
+            z: 0.1
           force: 0.0        # mass * 9.81
           force_frame: wrist_3_link
           sensor_frame: ft_frame
