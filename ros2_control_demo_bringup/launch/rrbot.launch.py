@@ -66,7 +66,7 @@ def generate_launch_description():
     hardware_activation = Node(
         package="controller_manager",
         executable="hardware_spawner",
-        arguments=["--activate-all"],
+        arguments=["RRBot", "--activate"],
     )
 
     robot_state_pub_node = Node(
