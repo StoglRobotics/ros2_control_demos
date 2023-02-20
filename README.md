@@ -579,7 +579,7 @@ Now you should also see the *RRbot* represented correctly in `RViz`.
 
 3. Now start the controller:
    ```
-   ros2 control switch_controllers --start forward_position_controller
+   ros2 control switch_controllers --activate forward_position_controller
    ```
    Check if controllers are activated:
    ```
@@ -622,7 +622,7 @@ Now you should also see the *RRbot* represented correctly in `RViz`.
 
 2. Now start the controller (and stop other running contorller):
    ```
-   ros2 control switch_controllers --stop forward_position_controller --start position_trajectory_controller
+   ros2 control switch_controllers --deactivate forward_position_controller --activate position_trajectory_controller
    ```
    Check if controllers are activated:
    ```
@@ -692,10 +692,10 @@ The output should be something like:
 
 Configure all controllers:
 ```
-ros2 control set_controller_state position_trajectory_controller configure
-ros2 control set_controller_state position_controller configure
-ros2 control set_controller_state joint1_position_controller configure
-ros2 control set_controller_state joint2_position_controller configure
+ros2 control set_controller_state position_trajectory_controller inactive
+ros2 control set_controller_state position_controller inactive
+ros2 control set_controller_state joint1_position_controller inactive
+ros2 control set_controller_state joint2_position_controller inactive
 ```
 
 Check states using:
@@ -734,7 +734,7 @@ Now, execute the following scenario to understand how chained controllers are wo
 
 1. Activate `joint1_position_controller` and send command for it:
    ```
-   ros2 control switch_controllers --start joint1_position_controller
+   ros2 control switch_controllers --activate joint1_position_controller
    ros2 topic pub /joint1_position_controller/commands std_msgs/msg/Float64MultiArray "data:
    - 0.5"
    ```
@@ -742,7 +742,7 @@ Now, execute the following scenario to understand how chained controllers are wo
 
 1. Activate `joint2_position_controller` and send command for it:
    ```
-   ros2 control switch_controllers --start joint2_position_controller
+   ros2 control switch_controllers --activate joint2_position_controller
    ros2 topic pub /joint2_position_controller/commands std_msgs/msg/Float64MultiArray "data:
    - -0.5"
    ```
@@ -752,10 +752,10 @@ Note: You can keep publishers running in a terminal so you can see the effects o
 
 1. Activate `position_controller` and send commands to it:
    ```
-   ros2 control switch_controllers --start position_controller
+   ros2 control switch_controllers --activate position_controller
    ```
 
-   Now, the `ros2 control list_hardware_interfaces` and `ros2 control list_controller -v` will show that `joint1_position_controller/joint1/position` and `joint2_position_controller/joint2/position` are claimed by `position_controller` controller.
+   Now, the `ros2 control list_hardware_interfaces` and `ros2 control list_controllers -v` will show that `joint1_position_controller/joint1/position` and `joint2_position_controller/joint2/position` are claimed by `position_controller` controller.
 
    Send a command to `position_controller` and check that `joint1` and `joint2` are moving to new position.
    ```
@@ -766,7 +766,7 @@ Note: You can keep publishers running in a terminal so you can see the effects o
 
 1. Activate `position_trajectory_controller` and send commands to it:
    ```
-   ros2 control switch_controllers --start position_trajectory_controller
+   ros2 control switch_controllers --activate position_trajectory_controller
    ```
 
    List again the interfaces to see their status changes.
@@ -780,17 +780,17 @@ Note: You can keep publishers running in a terminal so you can see the effects o
 1. Deactivate `position_trajectory_controller` and robot should either stop movement or if
    publishers are still active robot will end up in `[1, -1]` joint states.
    ```
-   ros2 control switch_controllers --stop position_trajectory_controller
+   ros2 control switch_controllers --deactivate position_trajectory_controller
    ```
 
 1. Deactivate `position_controller` and robot will move to position `[0.5, -0.5]` (if publishers are still running):
    ```
-   ros2 control switch_controllers --stop position_controller
+   ros2 control switch_controllers --deactivate position_controller
    ```
 
 1. Finally stop the other two controllers and check state of hardware interface and controllers.
    Now all interfaces are "unclaimed".
    ```
-   ros2 control switch_controllers --stop joint1_position_controller
-   ros2 control switch_controllers --stop joint2_position_controller
+   ros2 control switch_controllers --deactivate joint1_position_controller
+   ros2 control switch_controllers --deactivate joint2_position_controller
    ```
