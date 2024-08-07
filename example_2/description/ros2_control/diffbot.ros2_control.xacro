@@ -18,14 +18,26 @@
         </hardware>
       </xacro:if>
       <joint name="${prefix}left_wheel_joint">
-        <command_interface name="velocity"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
+        <command_interface name="velocity">
+          <param name="data_type">double</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
       <joint name="${prefix}right_wheel_joint">
-        <command_interface name="velocity"/>
-        <state_interface name="position"/>
-        <state_interface name="velocity"/>
+        <command_interface name="velocity">
+          <param name="data_type">double</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
+        <state_interface name="velocity">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
     </ros2_control>
 

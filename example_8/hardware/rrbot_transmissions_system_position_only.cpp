@@ -54,18 +54,6 @@ hardware_interface::CallbackReturn RRBotTransmissionsSystemPositionOnlyHardware:
 
   actuator_slowdown_ = hardware_interface::stod(info_.hardware_parameters["actuator_slowdown"]);
 
-  const auto num_joints = std::accumulate(
-    info_.transmissions.begin(), info_.transmissions.end(), 0ul,
-    [](const auto & acc, const auto & trans_info) { return acc + trans_info.joints.size(); });
-
-  const auto num_actuators = std::accumulate(
-    info_.transmissions.begin(), info_.transmissions.end(), 0ul,
-    [](const auto & acc, const auto & trans_info) { return acc + trans_info.actuators.size(); });
-
-  // reserve the space needed for joint and actuator data structures
-  joint_interfaces_.reserve(num_joints);
-  actuator_interfaces_.reserve(num_actuators);
-
   // create transmissions, joint and actuator handles
   auto transmission_loader = transmission_interface::SimpleTransmissionLoader();
 
@@ -92,58 +80,124 @@ hardware_interface::CallbackReturn RRBotTransmissionsSystemPositionOnlyHardware:
       return hardware_interface::CallbackReturn::ERROR;
     }
 
-    std::vector<transmission_interface::JointHandle> joint_handles;
-    for (const auto & joint_info : transmission_info.joints)
+    if (transmission_info.actuators.size() != transmission_info.joints.size())
+    {
+      RCLCPP_FATAL(
+        *logger_,
+        "For transmission %s: the size of the actuators is %li but the size of the joints is %li. "
+        "Expected to be the same.",
+        transmission_info.name.c_str(), transmission_info.actuators.size(),
+        transmission_info.joints.size());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+    std::vector<std::shared_ptr<transmission_interface::JointHandle>> joint_handles_vec;
+    joint_handles_.reserve(transmission_info.actuators.size());
+    std::vector<std::shared_ptr<transmission_interface::ActuatorHandle>> actuator_handles_vec;
+    actuator_handles_vec.reserve(transmission_info.actuators.size());
+
+    for (size_t i = 0; i < transmission_info.actuators.size(); ++i)
     {
       // this demo supports only one interface per joint
-      if (!(joint_info.state_interfaces.size() == 1 &&
-            joint_info.state_interfaces[0] == hardware_interface::HW_IF_POSITION &&
-            joint_info.command_interfaces.size() == 1 &&
-            joint_info.command_interfaces[0] == hardware_interface::HW_IF_POSITION))
+      if (!(transmission_info.joints.at(i).state_interfaces.size() == 1 &&
+            transmission_info.joints.at(i).state_interfaces[0] ==
+              hardware_interface::HW_IF_POSITION &&
+            transmission_info.joints.at(i).command_interfaces.size() == 1 &&
+            transmission_info.joints.at(i).command_interfaces[0] ==
+              hardware_interface::HW_IF_POSITION))
       {
         RCLCPP_FATAL(
           *logger_, "Invalid transmission joint '%s' configuration for this demo",
-          joint_info.name.c_str());
+          transmission_info.joints.at(i).name.c_str());
         return hardware_interface::CallbackReturn::ERROR;
       }
 
-      const auto joint_interface =
-        joint_interfaces_.insert(joint_interfaces_.end(), InterfaceData(joint_info.name));
+      const auto & joint_name = transmission_info.joints.at(i).name;
+      const auto & interface_type = std::string(hardware_interface::HW_IF_POSITION);
+      std::shared_ptr<transmission_interface::JointHandle> joint_handle =
+        std::make_shared<transmission_interface::JointHandle>(
+          hardware_interface::InterfaceDescription(
+            joint_name, hardware_interface::InterfaceInfo(interface_type, "double")));
 
-      transmission_interface::JointHandle joint_handle(
-        joint_info.name, hardware_interface::HW_IF_POSITION,
-        &joint_interface->transmission_passthrough_);
-      joint_handles.push_back(joint_handle);
-    }
+      // check that transmission interface name is present in the StateInterfaces and
+      // CommandInterfaces.
+      if (joint_state_interfaces_.find(joint_handle->get_name()) == joint_state_interfaces_.end())
+      {
+        if (joint_state_interfaces_.find(joint_handle->get_name()) == joint_state_interfaces_.end())
+          RCLCPP_FATAL(
+            *logger_,
+            "A interface '%s' is expected to be present in joint_state_interfaces_ as its used "
+            "for JointHandle but was not found.",
+            joint_handle->get_name().c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      else if (
+        joint_command_interfaces_.find(joint_handle->get_name()) == joint_command_interfaces_.end())
+      {
+        RCLCPP_FATAL(
+          *logger_,
+          "A interface '%s' is expected to be present in joint_command_interfaces_ as its used "
+          "for JointHandle but was not found.",
+          joint_handle->get_name().c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
 
-    std::vector<transmission_interface::ActuatorHandle> actuator_handles;
-    for (const auto & actuator_info : transmission_info.actuators)
-    {
+      joint_handles_vec.push_back(joint_handle);
+      const auto & [jh_it, jh_succ] =
+        joint_handles_.insert({joint_handle->get_name(), joint_handle});
+      if (!jh_succ)
+      {
+        RCLCPP_FATAL(
+          *logger_,
+          "Could not insert the JointHandle with name '%s' into map. Check for duplicate "
+          "names.",
+          joint_handle->get_name().c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+
       // no check for actuators types
+      const auto & actuator_name = transmission_info.actuators.at(i).name;
+      std::shared_ptr<transmission_interface::ActuatorHandle> actuator_handle =
+        std::make_shared<transmission_interface::ActuatorHandle>(
+          hardware_interface::InterfaceDescription(
+            actuator_name, hardware_interface::InterfaceInfo(interface_type, "double")));
 
-      const auto actuator_interface =
-        actuator_interfaces_.insert(actuator_interfaces_.end(), InterfaceData(actuator_info.name));
-      transmission_interface::ActuatorHandle actuator_handle(
-        actuator_info.name, hardware_interface::HW_IF_POSITION,
-        &actuator_interface->transmission_passthrough_);
-      actuator_handles.push_back(actuator_handle);
+      actuator_handles_vec.push_back(actuator_handle);
+      const auto & [ah_it, ah_succ] =
+        actuator_handles_.insert({actuator_handle->get_name(), actuator_handle});
+      if (!ah_succ)
+      {
+        RCLCPP_FATAL(
+          *logger_,
+          "Could not insert the ActuatorHandle with name '%s' into map. Check for duplicate "
+          "names.",
+          joint_handle->get_name().c_str());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+      /// @note no need to store the joint and actuator handles, the transmission
+      /// will keep whatever info it needs after is done with them
+      try
+      {
+        transmission->configure(joint_handles_vec, actuator_handles_vec);
+      }
+      catch (const transmission_interface::TransmissionInterfaceException & exc)
+      {
+        RCLCPP_FATAL(
+          *logger_, "Error while configuring %s: %s", transmission_info.name.c_str(), exc.what());
+        return hardware_interface::CallbackReturn::ERROR;
+      }
+
+      // This is only ok because we know that only one joint per transmission is there and joint
+      // name and transmission joint name are the same. If there are multiple joints/actuators per
+      // transmission this has to be changed
+      auto actuator_state = std::make_shared<hardware_interface::StateInterface>(
+        hardware_interface::InterfaceDescription(
+          actuator_name, hardware_interface::InterfaceInfo(interface_type, "double")));
+      actuator_states_[actuator_state->get_name()] = actuator_state;
+      transmissions_[joint_name] = transmission;
+      joint_to_transmission_info_[joint_name] = transmission_info;
+      joint_to_actuator_[joint_name] = actuator_name;
+      actuator_to_joint_[actuator_name] = joint_name;
     }
-
-    /// @note no need to store the joint and actuator handles, the transmission
-    /// will keep whatever info it needs after is done with them
-
-    try
-    {
-      transmission->configure(joint_handles, actuator_handles);
-    }
-    catch (const transmission_interface::TransmissionInterfaceException & exc)
-    {
-      RCLCPP_FATAL(
-        *logger_, "Error while configuring %s: %s", transmission_info.name.c_str(), exc.what());
-      return hardware_interface::CallbackReturn::ERROR;
-    }
-
-    transmissions_.push_back(transmission);
   }
 
   RCLCPP_INFO(*logger_, "Initialization successful");
@@ -156,56 +210,21 @@ hardware_interface::CallbackReturn RRBotTransmissionsSystemPositionOnlyHardware:
 {
   RCLCPP_INFO(*logger_, "Configuring...");
 
-  auto reset_interfaces = [](std::vector<InterfaceData> & interfaces)
+  for (const auto & joint : info_.joints)
   {
-    for (auto & interface_data : interfaces)
-    {
-      interface_data.command_ = 0.0;
-      interface_data.state_ = 0.0;
-      interface_data.transmission_passthrough_ = kNaN;
-    }
-  };
-
-  reset_interfaces(joint_interfaces_);
-  reset_interfaces(actuator_interfaces_);
+    const auto joint_pos = joint.name + "/" + hardware_interface::HW_IF_POSITION;
+    const auto actuator_name = joint_to_actuator_.at(joint.name);
+    const auto act_pos = actuator_name + "/" + hardware_interface::HW_IF_POSITION;
+    set_state(joint_pos, 0.0);
+    set_command(joint_pos, 0.0);
+    actuator_states_.at(act_pos)->set_value(0.0);
+    joint_handles_.at(joint_pos)->set_value(kNaN);
+    actuator_handles_.at(joint_pos)->set_value(kNaN);
+  }
 
   RCLCPP_INFO(*logger_, "Configuration successful");
 
   return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-std::vector<hardware_interface::StateInterface>
-RRBotTransmissionsSystemPositionOnlyHardware::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-  for (const auto & joint : info_.joints)
-  {
-    /// @pre all joint interfaces exist, checked in on_init()
-    auto joint_interface = std::find_if(
-      joint_interfaces_.begin(), joint_interfaces_.end(),
-      [&](const InterfaceData & interface) { return interface.name_ == joint.name; });
-
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      joint.name, hardware_interface::HW_IF_POSITION, &joint_interface->state_));
-  }
-  return state_interfaces;
-}
-
-std::vector<hardware_interface::CommandInterface>
-RRBotTransmissionsSystemPositionOnlyHardware::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-  for (const auto & joint : info_.joints)
-  {
-    /// @pre all joint interfaces exist, checked in on_init()
-    auto joint_interface = std::find_if(
-      joint_interfaces_.begin(), joint_interfaces_.end(),
-      [&](const InterfaceData & interface) { return interface.name_ == joint.name; });
-
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      joint.name, hardware_interface::HW_IF_POSITION, &joint_interface->command_));
-  }
-  return command_interfaces;
 }
 
 hardware_interface::CallbackReturn RRBotTransmissionsSystemPositionOnlyHardware::on_activate(
@@ -229,44 +248,29 @@ hardware_interface::CallbackReturn RRBotTransmissionsSystemPositionOnlyHardware:
 hardware_interface::return_type RRBotTransmissionsSystemPositionOnlyHardware::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // actuator: state -> transmission
-  std::for_each(
-    actuator_interfaces_.begin(), actuator_interfaces_.end(), [](auto & actuator_interface)
-    { actuator_interface.transmission_passthrough_ = actuator_interface.state_; });
-
-  // transmission: actuator -> joint
-  std::for_each(
-    transmissions_.begin(), transmissions_.end(),
-    [](auto & transmission) { transmission->actuator_to_joint(); });
-
-  // joint: transmission -> state
-  std::for_each(
-    joint_interfaces_.begin(), joint_interfaces_.end(), [](auto & joint_interface)
-    { joint_interface.state_ = joint_interface.transmission_passthrough_; });
-
-  // log state data
-  std::stringstream ss;
-  ss << "State data:";
-  for (const auto & transmission_info : info_.transmissions)
+  for (const auto & joint : info_.joints)
   {
+    const auto & actuator_name = joint_to_actuator_.at(joint.name);
+    const auto act_pos = actuator_name + "/" + hardware_interface::HW_IF_POSITION;
+    const auto joint_pos = joint.name + "/" + hardware_interface::HW_IF_POSITION;
+    // actuator: state -> transmission
+    actuator_handles_.at(act_pos)->set_value(actuator_states_.at(act_pos)->get_value<double>());
+
+    // transmission: actuator -> joint
+    transmissions_.at(joint.name)->actuator_to_joint();
+
+    // joint: transmission -> state
+    set_state(joint_pos, joint_handles_.at(joint_pos)->get_value<double>());
+    // log state data
     // again, this only for simple transmissions, we know there is only one joint
-    const auto joint_interface = std::find_if(
-      joint_interfaces_.cbegin(), joint_interfaces_.cend(), [&](const auto & joint_interface)
-      { return joint_interface.name_ == transmission_info.joints[0].name; });
-
-    const auto actuator_interface = std::find_if(
-      actuator_interfaces_.cbegin(), actuator_interfaces_.cend(),
-      [&](const auto & actuator_interface)
-      { return actuator_interface.name_ == transmission_info.actuators[0].name; });
-
-    const auto & reduction = transmission_info.joints[0].mechanical_reduction;
-
-    ss << std::endl
-       << "\t" << joint_interface->name_ << ": " << joint_interface->state_ << " <-- "
-       << transmission_info.name << "(R=" << reduction << ") <-- " << actuator_interface->name_
-       << ": " << actuator_interface->state_;
+    const auto & transmission_info = joint_to_transmission_info_.at(joint.name);
+    std::stringstream ss;
+    ss << "State data:" << std::endl
+       << "\t" << joint_pos << ": " << get_state(joint_pos) << " <-- " << transmission_info.name
+       << "(R=" << transmission_info.joints[0].mechanical_reduction << ") <-- " << actuator_name
+       << ": " << actuator_states_.at(actuator_name)->get_value<double>();
+    RCLCPP_INFO_THROTTLE(*logger_, *clock_, 1000, "%s", ss.str().c_str());
   }
-  RCLCPP_INFO_THROTTLE(*logger_, *clock_, 1000, "%s", ss.str().c_str());
 
   return hardware_interface::return_type::OK;
 }
@@ -274,61 +278,40 @@ hardware_interface::return_type RRBotTransmissionsSystemPositionOnlyHardware::re
 hardware_interface::return_type RRBotTransmissionsSystemPositionOnlyHardware::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
-  // joint: command -> transmission
-  std::for_each(
-    joint_interfaces_.begin(), joint_interfaces_.end(), [](auto & joint_interface)
-    { joint_interface.transmission_passthrough_ = joint_interface.command_; });
-
-  // transmission: joint -> actuator
-  std::for_each(
-    transmissions_.begin(), transmissions_.end(),
-    [](auto & transmission) { transmission->joint_to_actuator(); });
-
-  // actuator: transmission -> command
-  std::for_each(
-    actuator_interfaces_.begin(), actuator_interfaces_.end(), [](auto & actuator_interface)
-    { actuator_interface.command_ = actuator_interface.transmission_passthrough_; });
-
-  // simulate motor motion
-  std::for_each(
-    actuator_interfaces_.begin(), actuator_interfaces_.end(),
-    [&](auto & actuator_interface)
-    {
-      actuator_interface.state_ =
-        actuator_interface.state_ +
-        (actuator_interface.command_ - actuator_interface.state_) / actuator_slowdown_;
-    });
-
-  // log command data
-  std::stringstream ss;
-  ss << "Command data:";
-  for (const auto & transmission_info : info_.transmissions)
+  for (const auto & joint : info_.joints)
   {
-    // again, this only for simple transmissions, we know there is only one joint
-    const auto joint_interface = std::find_if(
-      joint_interfaces_.cbegin(), joint_interfaces_.cend(), [&](const auto & joint_interface)
-      { return joint_interface.name_ == transmission_info.joints[0].name; });
+    const auto & actuator_name = joint_to_actuator_.at(joint.name);
+    const auto act_pos = actuator_name + "/" + hardware_interface::HW_IF_POSITION;
+    const auto joint_pos = joint.name + "/" + hardware_interface::HW_IF_POSITION;
+    // joint: command -> transmission
+    joint_handles_.at(joint_pos)->set_value(get_command(joint_pos));
 
-    const auto actuator_interface = std::find_if(
-      actuator_interfaces_.cbegin(), actuator_interfaces_.cend(),
-      [&](const auto & actuator_interface)
-      { return actuator_interface.name_ == transmission_info.actuators[0].name; });
+    // transmission: joint -> actuator
+    transmissions_.at(joint.name)->joint_to_actuator();
 
-    const auto & reduction = transmission_info.joints[0].mechanical_reduction;
+    // actuator: transmission -> command
+    actuator_states_.at(act_pos)->set_value(actuator_handles_.at(act_pos)->get_value<double>());
 
-    ss << std::endl
-       << "\t" << joint_interface->name_ << ": " << joint_interface->command_ << " --> "
-       << transmission_info.name << "(R=" << reduction << ") --> " << actuator_interface->name_
-       << ": " << actuator_interface->command_;
+    // simulate motor motion
+    auto current_actuator_state = actuator_states_.at(act_pos)->get_value<double>();
+    double new_state =
+      current_actuator_state +
+      (actuator_handles_.at(act_pos)->get_value<double>() - current_actuator_state) /
+        actuator_slowdown_;
+    actuator_states_.at(act_pos)->set_value(new_state);
+
+    // log command data
+    const auto & transmission_info = joint_to_transmission_info_.at(joint.name);
+    std::stringstream ss;
+    ss << "Command data:" << std::endl
+       << "\t" << joint_pos << ": " << get_command(joint_pos) << " --> " << transmission_info.name
+       << "(R=" << transmission_info.joints[0].mechanical_reduction << ") --> " << actuator_name
+       << ": " << actuator_states_.at(actuator_name)->get_value<double>();
+
+    RCLCPP_INFO_THROTTLE(*logger_, *clock_, 1000, "%s", ss.str().c_str());
   }
-  RCLCPP_INFO_THROTTLE(*logger_, *clock_, 1000, "%s", ss.str().c_str());
 
   return hardware_interface::return_type::OK;
-}
-
-RRBotTransmissionsSystemPositionOnlyHardware::InterfaceData::InterfaceData(const std::string & name)
-: name_(name), command_(kNaN), state_(kNaN), transmission_passthrough_(kNaN)
-{
 }
 
 }  // namespace ros2_control_demo_example_8

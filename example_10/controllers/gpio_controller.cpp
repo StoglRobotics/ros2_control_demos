@@ -59,8 +59,8 @@ controller_interface::return_type GPIOController::update(
   {
     RCLCPP_DEBUG(
       get_node()->get_logger(), "%s: (%f)", state_interfaces_[i].get_name().c_str(),
-      state_interfaces_[i].get_value());
-    gpio_msg_.values.at(i) = static_cast<float>(state_interfaces_.at(i).get_value());
+      state_interfaces_[i].get_value<double>());
+    gpio_msg_.values.at(i) = static_cast<float>(state_interfaces_.at(i).get_value<double>());
   }
   gpio_publisher_->publish(gpio_msg_);
 
@@ -84,7 +84,7 @@ controller_interface::return_type GPIOController::update(
     command_interfaces_[i].set_value(output_cmd_ptr_->data[i]);
     RCLCPP_DEBUG(
       get_node()->get_logger(), "%s: (%f)", command_interfaces_[i].get_name().c_str(),
-      command_interfaces_[i].get_value());
+      command_interfaces_[i].get_value<double>());
   }
 
   return controller_interface::return_type::OK;

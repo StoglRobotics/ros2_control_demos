@@ -12,10 +12,13 @@
       </hardware>
       <joint name="${prefix}joint1">
         <command_interface name="position">
+         <param name="data_type">double</param>
           <param name="min">-100</param>
           <param name="max">100</param>
         </command_interface>
-        <state_interface name="position"/>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
     </ros2_control>
     <ros2_control name="RRBotModularJoint2" type="actuator">
@@ -27,10 +30,13 @@
       </hardware>
       <joint name="${prefix}joint2">
         <command_interface name="position">
+         <param name="data_type">double</param>
           <param name="min">-100</param>
           <param name="max">100</param>
         </command_interface>
-        <state_interface name="position"/>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
     </ros2_control>
   </xacro:macro>

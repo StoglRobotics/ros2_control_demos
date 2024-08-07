@@ -15,6 +15,7 @@
 #ifndef ROS2_CONTROL_DEMO_EXAMPLE_7__R6BOT_HARDWARE_HPP_
 #define ROS2_CONTROL_DEMO_EXAMPLE_7__R6BOT_HARDWARE_HPP_
 
+#include "memory"
 #include "string"
 #include "unordered_map"
 #include "vector"
@@ -40,21 +41,27 @@ public:
 
   std::vector<hardware_interface::CommandInterface> export_command_interfaces() override;
 
+  std::vector<hardware_interface::InterfaceDescription> export_command_interface_descriptions()
+    override;
+
   return_type read(const rclcpp::Time & time, const rclcpp::Duration & period) override;
 
   return_type write(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/) override;
 
 protected:
-  /// The size of this vector is (standard_interfaces_.size() x nr_joints)
-  std::vector<double> joint_position_command_;
-  std::vector<double> joint_velocities_command_;
-  std::vector<double> joint_position_;
-  std::vector<double> joint_velocities_;
-  std::vector<double> ft_states_;
-  std::vector<double> ft_command_;
+  struct FTS_Sensor
+  {
+    explicit FTS_Sensor(const std::string & sensor_name) : name(sensor_name) {}
+    const std::string name;
+    const std::string force_x = "force.x";
+    const std::string force_y = "force.y";
+    const std::string force_z = "force.z";
+    const std::string torque_x = "torque.x";
+    const std::string torque_y = "torque.y";
+    const std::string torque_z = "torque.z";
+  };
 
-  std::unordered_map<std::string, std::vector<std::string>> joint_interfaces = {
-    {"position", {}}, {"velocity", {}}};
+  std::unique_ptr<FTS_Sensor> fts_sensor_;
 };
 
 }  // namespace ros2_control_demo_example_7

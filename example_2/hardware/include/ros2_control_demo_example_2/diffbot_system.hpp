@@ -70,10 +70,8 @@ private:
   double hw_start_sec_;
   double hw_stop_sec_;
 
-  // Store the command for the simulated robot
-  std::vector<double> hw_commands_;
-  std::vector<double> hw_positions_;
-  std::vector<double> hw_velocities_;
+  const std::string vel = "/" + std::string(hardware_interface::HW_IF_VELOCITY);
+  const std::string pos = "/" + std::string(hardware_interface::HW_IF_POSITION);
 };
 
 }  // namespace ros2_control_demo_example_2

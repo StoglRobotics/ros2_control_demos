@@ -43,9 +43,6 @@ hardware_interface::CallbackReturn DiffBotSystemHardware::on_init(
   hw_stop_sec_ =
     hardware_interface::stod(info_.hardware_parameters["example_param_hw_stop_duration_sec"]);
   // END: This part here is for exemplary purposes - Please do not copy to your production code
-  hw_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints)
   {
@@ -99,32 +96,6 @@ hardware_interface::CallbackReturn DiffBotSystemHardware::on_init(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> DiffBotSystemHardware::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-  for (auto i = 0u; i < info_.joints.size(); i++)
-  {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_positions_[i]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_velocities_[i]));
-  }
-
-  return state_interfaces;
-}
-
-std::vector<hardware_interface::CommandInterface> DiffBotSystemHardware::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-  for (auto i = 0u; i < info_.joints.size(); i++)
-  {
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_commands_[i]));
-  }
-
-  return command_interfaces;
-}
-
 hardware_interface::CallbackReturn DiffBotSystemHardware::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
@@ -139,14 +110,20 @@ hardware_interface::CallbackReturn DiffBotSystemHardware::on_activate(
   }
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
-  // set some default values
-  for (auto i = 0u; i < hw_positions_.size(); i++)
+  // set some default values for joints
+  for (const auto & [cmd_itf_name, cmd_itf_descr] : joint_command_interfaces_)
   {
-    if (std::isnan(hw_positions_[i]))
+    if (!command_holds_value(cmd_itf_name) || std::isnan(get_command(cmd_itf_name)))
     {
-      hw_positions_[i] = 0;
-      hw_velocities_[i] = 0;
-      hw_commands_[i] = 0;
+      set_command(cmd_itf_name, 0.0);
+    }
+  }
+
+  for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
+  {
+    if (!state_holds_value(state_itf_name) || std::isnan(get_state(state_itf_name)))
+    {
+      set_state(state_itf_name, 0.0);
     }
   }
 
@@ -178,17 +155,18 @@ hardware_interface::return_type DiffBotSystemHardware::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
   // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
-  for (std::size_t i = 0; i < hw_velocities_.size(); i++)
+  for (const auto & component : info_.joints)
   {
-    // Simulate DiffBot wheels's movement as a first-order system
-    // Update the joint status: this is a revolute joint without any limit.
-    // Simply integrates
-    hw_positions_[i] = hw_positions_[i] + period.seconds() * hw_velocities_[i];
+    const std::string & joint = component.name;
+    const std::string joint_pos = joint + pos;
+    const std::string joint_vel = joint + vel;
+    double new_pos = get_state(joint_pos) + period.seconds() * get_state(joint_vel);
+    set_state(joint_pos, new_pos);
 
     RCLCPP_INFO(
       rclcpp::get_logger("DiffBotSystemHardware"),
-      "Got position state %.5f and velocity state %.5f for '%s'!", hw_positions_[i],
-      hw_velocities_[i], info_.joints[i].name.c_str());
+      "Got position state %.5f and velocity state %.5f for '%s'!", get_state(joint_pos),
+      get_state(joint_vel), joint.c_str());
   }
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
@@ -201,14 +179,16 @@ hardware_interface::return_type ros2_control_demo_example_2 ::DiffBotSystemHardw
   // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
   RCLCPP_INFO(rclcpp::get_logger("DiffBotSystemHardware"), "Writing...");
 
-  for (auto i = 0u; i < hw_commands_.size(); i++)
+  for (const auto & component : info_.joints)
   {
+    const std::string & joint = component.name;
+    const std::string joint_vel = joint + vel;
     // Simulate sending commands to the hardware
     RCLCPP_INFO(
-      rclcpp::get_logger("DiffBotSystemHardware"), "Got command %.5f for '%s'!", hw_commands_[i],
-      info_.joints[i].name.c_str());
+      rclcpp::get_logger("DiffBotSystemHardware"), "Got command %.5f for '%s'!",
+      get_command(joint + vel), joint.c_str());
 
-    hw_velocities_[i] = hw_commands_[i];
+    set_state(joint_vel, get_command(joint_vel));
   }
   RCLCPP_INFO(rclcpp::get_logger("DiffBotSystemHardware"), "Joints successfully written!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code

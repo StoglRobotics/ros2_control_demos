@@ -45,9 +45,6 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_init(
   hw_slowdown_ = stod(info_.hardware_parameters["example_param_hw_slowdown"]);
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
-  hw_joint_state_ = std::numeric_limits<double>::quiet_NaN();
-  hw_joint_command_ = std::numeric_limits<double>::quiet_NaN();
-
   const hardware_interface::ComponentInfo & joint = info_.joints[0];
   // RRBotModularJoint has exactly one state and command interface on each joint
   if (joint.command_interfaces.size() != 1)
@@ -85,27 +82,21 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_init(
     return hardware_interface::CallbackReturn::ERROR;
   }
 
+  // assert that joint states and commands are the same so wie can later just iterate over one
+  for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
+  {
+    if (joint_command_interfaces_.find(state_itf_name) == joint_command_interfaces_.end())
+    {
+      RCLCPP_FATAL(
+        rclcpp::get_logger("RRBotModularJoint"),
+        "Joint '%s' has state interface with name<%s> but not found in CommandInterfaces. Make "
+        "sure the configuration exports same State- and CommandInterfaces",
+        joint.name.c_str(), joint.state_itf_name.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
+
   return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-std::vector<hardware_interface::StateInterface> RRBotModularJoint::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    info_.joints[0].name, hardware_interface::HW_IF_POSITION, &hw_joint_state_));
-
-  return state_interfaces;
-}
-
-std::vector<hardware_interface::CommandInterface> RRBotModularJoint::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-
-  command_interfaces.emplace_back(hardware_interface::CommandInterface(
-    info_.joints[0].name, hardware_interface::HW_IF_POSITION, &hw_joint_command_));
-
-  return command_interfaces;
 }
 
 hardware_interface::CallbackReturn RRBotModularJoint::on_activate(
@@ -122,12 +113,21 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_activate(
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
   // set some default values for joints
-  if (std::isnan(hw_joint_state_))
+  for (const auto & [cmd_itf_name, cmd_itf_descr] : joint_command_interfaces_)
   {
-    hw_joint_state_ = 0;
-    hw_joint_command_ = 0;
+    if (!valid_command(cmd_itf_name) || std::isnan(get_command(cmd_itf_name)))
+    {
+      set_command(cmd_itf_name, 0.0);
+    }
   }
 
+  for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
+  {
+    if (!valid_state(state_itf_name) || std::isnan(get_state(state_itf_name)))
+    {
+      set_state(state_itf_name, 0.0);
+    }
+  }
   RCLCPP_INFO(rclcpp::get_logger("RRBotModularJoint"), "Successfully activated!");
 
   return hardware_interface::CallbackReturn::SUCCESS;
@@ -158,10 +158,18 @@ hardware_interface::return_type RRBotModularJoint::read(
   RCLCPP_INFO(rclcpp::get_logger("RRBotModularJoint"), "Reading...");
 
   // Simulate RRBot's movement
-  hw_joint_state_ = hw_joint_state_ + (hw_joint_command_ - hw_joint_state_) / hw_slowdown_;
-  RCLCPP_INFO(
-    rclcpp::get_logger("RRBotModularJoint"), "Got state %.5f for joint '%s'!", hw_joint_state_,
-    info_.joints[0].name.c_str());
+  /*
+   * @pre joint_state_interfaces_ names and are subset of joint_command_interfaces_
+   */
+  for (const auto & [itf_name, itf_descr] : joint_state_interfaces_)
+  {
+    auto old_state = get_state(itf_name);
+    auto old_cmd = get_command(itf_name);
+    set_state(itf_name, old_state + (old_cmd - old_state) / hw_slowdown_);
+    RCLCPP_INFO(
+      rclcpp::get_logger("RRBotModularJoint"), "Got state %.5f for joint '%s'!",
+      get_state(itf_name), itf_name.c_str());
+  }
 
   RCLCPP_INFO(rclcpp::get_logger("RRBotModularJoint"), "Joints successfully read!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code
@@ -176,9 +184,12 @@ hardware_interface::return_type ros2_control_demo_example_6::RRBotModularJoint::
   RCLCPP_INFO(rclcpp::get_logger("RRBotModularJoint"), "Writing...please wait...");
 
   // Simulate sending commands to the hardware
-  RCLCPP_INFO(
-    rclcpp::get_logger("RRBotModularJoint"), "Got command %.5f for joint '%s'!", hw_joint_command_,
-    info_.joints[0].name.c_str());
+  for (const auto & [itf_name, itf_descr] : joint_command_interfaces_)
+  {
+    RCLCPP_INFO(
+      rclcpp::get_logger("RRBotModularJoint"), "Got command %.5f for joint '%s'!",
+      get_command(itf_name), itf_name.c_str());
+  }
 
   RCLCPP_INFO(rclcpp::get_logger("RRBotModularJoint"), "Joints successfully written!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code
