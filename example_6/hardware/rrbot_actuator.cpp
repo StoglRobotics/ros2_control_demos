@@ -91,7 +91,7 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_init(
         rclcpp::get_logger("RRBotModularJoint"),
         "Joint '%s' has state interface with name<%s> but not found in CommandInterfaces. Make "
         "sure the configuration exports same State- and CommandInterfaces",
-        joint.name.c_str(), joint.state_itf_name.c_str());
+        joint.name.c_str(), state_itf_name.c_str());
       return hardware_interface::CallbackReturn::ERROR;
     }
   }
@@ -115,7 +115,7 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_activate(
   // set some default values for joints
   for (const auto & [cmd_itf_name, cmd_itf_descr] : joint_command_interfaces_)
   {
-    if (!valid_command(cmd_itf_name) || std::isnan(get_command(cmd_itf_name)))
+    if (!command_holds_value(cmd_itf_name) || std::isnan(get_command(cmd_itf_name)))
     {
       set_command(cmd_itf_name, 0.0);
     }
@@ -123,7 +123,7 @@ hardware_interface::CallbackReturn RRBotModularJoint::on_activate(
 
   for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
   {
-    if (!valid_state(state_itf_name) || std::isnan(get_state(state_itf_name)))
+    if (!command_holds_value(state_itf_name) || std::isnan(get_state(state_itf_name)))
     {
       set_state(state_itf_name, 0.0);
     }

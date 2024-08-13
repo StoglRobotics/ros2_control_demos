@@ -21,28 +21,45 @@
 
       <joint name="${prefix}joint1">
         <command_interface name="position">
+          <param name="data_type">double</param>
           <param name="min">-1</param>
           <param name="max">1</param>
         </command_interface>
-        <state_interface name="position"/>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
       <joint name="${prefix}joint2">
         <command_interface name="position">
+          <param name="data_type">double</param>
           <param name="min">-1</param>
           <param name="max">1</param>
         </command_interface>
-        <state_interface name="position"/>
+        <state_interface name="position">
+          <param name="data_type">double</param>
+        </state_interface>
       </joint>
       <!-- from https://github.com/ros-controls/ros2_control/blob/f58d4072dbd1c3fd4e1f64cd10a19a2b60f59049/ros2_control_test_assets/include/ros2_control_test_assets/components_urdfs.hpp#L344 -->
       <gpio name="flange_analog_IOs">
-        <command_interface name="analog_output1"/>
-        <state_interface name="analog_output1"/> <!-- Needed to know current state of the output -->
-        <state_interface name="analog_input1"/>
-        <state_interface name="analog_input2"/>
+        <command_interface name="analog_output1">
+          <param name="data_type">double</param>
+        </command_interface>
+        <state_interface name="analog_output1"> <!-- Needed to know current state of the output -->
+          <param name="data_type">double</param>
+        </state_interface>
+        <state_interface name="analog_input1">
+          <param name="data_type">double</param>
+        </state_interface>
+        <state_interface name="analog_input2">
+          <param name="data_type">double</param>
+        </state_interface>
       </gpio>
       <gpio name="flange_vacuum">
-        <command_interface name="vacuum"/>
+        <command_interface name="vacuum">
+          <param name="data_type">double</param>
+        </command_interface>
         <state_interface name="vacuum">
+          <param name="data_type">double</param>
           <param name="initial_value">1.0</param>
         </state_interface>
       </gpio>

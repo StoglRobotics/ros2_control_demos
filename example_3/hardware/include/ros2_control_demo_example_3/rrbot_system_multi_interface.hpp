@@ -77,14 +77,6 @@ private:
   double hw_stop_sec_;
   double hw_slowdown_;
 
-  // Store the commands for the simulated robot
-  std::vector<double> hw_commands_positions_;
-  std::vector<double> hw_commands_velocities_;
-  std::vector<double> hw_commands_accelerations_;
-  std::vector<double> hw_states_positions_;
-  std::vector<double> hw_states_velocities_;
-  std::vector<double> hw_states_accelerations_;
-
   // Enum defining at which control level we are
   // Dumb way of maintaining the command_interface type per joint.
   enum integration_level_t : std::uint8_t
@@ -95,8 +87,25 @@ private:
     ACCELERATION = 3
   };
 
-  // Active control mode for each actuator
-  std::vector<integration_level_t> control_level_;
+  struct Joint
+  {
+    explicit Joint(const std::string & joint_name) : name_(joint_name) {}
+
+    const std::string & name() const { return name_; }
+    const std::string & position() const { return position_; }
+    const std::string & velocity() const { return velocity_; }
+    const std::string & acceleration() const { return acceleration_; }
+
+  protected:
+    std::string name_;
+    std::string position_ = name_ + "/" + hardware_interface::HW_IF_POSITION;
+    std::string velocity_ = name_ + "/" + hardware_interface::HW_IF_VELOCITY;
+    std::string acceleration_ = name_ + "/" + hardware_interface::HW_IF_ACCELERATION;
+  };
+
+  std::vector<Joint> joints_;
+  // All joints have same mode
+  integration_level_t control_level_;
 };
 
 }  // namespace ros2_control_demo_example_3

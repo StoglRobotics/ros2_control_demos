@@ -46,11 +46,6 @@ hardware_interface::CallbackReturn RRBotSystemWithSensorHardware::on_init(
   hw_sensor_change_ = stod(info_.hardware_parameters["example_param_max_sensor_change"]);
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
-  hw_joint_states_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_joint_commands_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_sensor_states_.resize(
-    info_.sensors[0].state_interfaces.size(), std::numeric_limits<double>::quiet_NaN());
-
   for (const hardware_interface::ComponentInfo & joint : info_.joints)
   {
     // RRBotSystemWithSensor has exactly one state and command interface on each joint
@@ -91,6 +86,28 @@ hardware_interface::CallbackReturn RRBotSystemWithSensorHardware::on_init(
     }
   }
 
+  // check if we have same command and state interfaces for joint this makes iterating easier
+  // first check if size is equal then we only need to iterate over one of them
+  if (joint_state_interfaces_.size() != joint_command_interfaces_.size())
+  {
+    RCLCPP_FATAL(
+      rclcpp::get_logger("RRBotSystemWithSensorHardware"),
+      "Expect joint CommandInterface and joint StateInterfaces to be of equal size.");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
+  {
+    if (joint_command_interfaces_.find(state_itf_name) == joint_command_interfaces_.end())
+    {
+      RCLCPP_FATAL(
+        rclcpp::get_logger("RRBotSystemWithSensorHardware"),
+        "Expect joint CommandInterface and joint StateInterfaces to be equal but StateInterface "
+        "includes<%s> which is not included in CommandInterfaces.",
+        state_itf_name.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
+
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -110,48 +127,16 @@ hardware_interface::CallbackReturn RRBotSystemWithSensorHardware::on_configure(
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
   // reset values always when configuring hardware
-  for (uint i = 0; i < hw_joint_states_.size(); i++)
+  // we checked before that joint_state_itfs_ == joint_command_itfs_;
+  for (const auto & [itf_name, itf_desc] : joint_state_interfaces_)
   {
-    hw_joint_states_[i] = 0;
-    hw_joint_commands_[i] = 0;
+    set_state(itf_name, 0.0);
+    set_command(itf_name, 0.0);
   }
 
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Successfully configured!");
 
   return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-std::vector<hardware_interface::StateInterface>
-RRBotSystemWithSensorHardware::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-  for (uint i = 0; i < info_.joints.size(); i++)
-  {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_joint_states_[i]));
-  }
-
-  // export sensor state interface
-  for (uint i = 0; i < info_.sensors[0].state_interfaces.size(); i++)
-  {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.sensors[0].name, info_.sensors[0].state_interfaces[i].name, &hw_sensor_states_[i]));
-  }
-
-  return state_interfaces;
-}
-
-std::vector<hardware_interface::CommandInterface>
-RRBotSystemWithSensorHardware::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-  for (uint i = 0; i < info_.joints.size(); i++)
-  {
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_joint_commands_[i]));
-  }
-
-  return command_interfaces;
 }
 
 hardware_interface::CallbackReturn RRBotSystemWithSensorHardware::on_activate(
@@ -170,15 +155,18 @@ hardware_interface::CallbackReturn RRBotSystemWithSensorHardware::on_activate(
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
   // command and state should be equal when starting
-  for (uint i = 0; i < hw_joint_states_.size(); i++)
+  for (const auto & [itf_name, itf_desc] : joint_state_interfaces_)
   {
-    hw_joint_commands_[i] = hw_joint_states_[i];
+    set_command(itf_name, get_state(itf_name));
   }
 
   // set default value for sensor
-  if (std::isnan(hw_sensor_states_[0]))
+  for (const auto & [sensor_itf_name, sensor_itf_desc] : sensor_state_interfaces_)
   {
-    hw_sensor_states_[0] = 0;
+    if (!state_holds_value(sensor_itf_name) || std::isnan(get_state(sensor_itf_name)))
+    {
+      set_state(sensor_itf_name, 0.0);
+    }
   }
 
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Successfully activated!");
@@ -213,25 +201,30 @@ hardware_interface::return_type RRBotSystemWithSensorHardware::read(
   // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Reading...please wait...");
 
-  for (uint i = 0; i < hw_joint_states_.size(); i++)
+  for (const auto & [itf_name, itf_desc] : joint_state_interfaces_)
   {
     // Simulate RRBot's movement
-    hw_joint_states_[i] += (hw_joint_commands_[i] - hw_joint_states_[i]) / hw_slowdown_;
+    auto old_state = get_state(itf_name);
+    auto new_state = old_state + (get_command(itf_name) - old_state) / hw_slowdown_;
+    set_state(itf_name, new_state);
     RCLCPP_INFO(
-      rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Got state %.5f for joint %u!",
-      hw_joint_states_[i], i);
+      rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Got state %.5f for joint %s!",
+      get_state(itf_name), itf_name.c_str());
   }
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Joints successfully read!");
 
-  for (uint i = 0; i < hw_sensor_states_.size(); i++)
+  int i = 0;
+  for (const auto & [sensor_itf_name, sensor_itf_desc] : sensor_state_interfaces_)
   {
     // Simulate RRBot's sensor data
     unsigned int seed = time(NULL) + i;
-    hw_sensor_states_[i] =
-      static_cast<float>(rand_r(&seed)) / (static_cast<float>(RAND_MAX / hw_sensor_change_));
+    set_state(
+      sensor_itf_name,
+      static_cast<float>(rand_r(&seed)) / (static_cast<float>(RAND_MAX / hw_sensor_change_)));
     RCLCPP_INFO(
       rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Got value %e for interface %s!",
-      hw_sensor_states_[i], info_.sensors[0].state_interfaces[i].name.c_str());
+      get_state(sensor_itf_name), sensor_itf_name.c_str());
+    ++i;
   }
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Sensors successfully read!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code
@@ -245,12 +238,12 @@ hardware_interface::return_type ros2_control_demo_example_4::RRBotSystemWithSens
   // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Writing...please wait...");
 
-  for (uint i = 0; i < hw_joint_commands_.size(); i++)
+  for (const auto & [itf_name, itf_desc] : joint_command_interfaces_)
   {
     // Simulate sending commands to the hardware
     RCLCPP_INFO(
       rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Got command %.5f for joint %u!",
-      hw_joint_commands_[i], i);
+      get_command(itf_name), itf_name);
   }
   RCLCPP_INFO(rclcpp::get_logger("RRBotSystemWithSensorHardware"), "Joints successfully written!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code

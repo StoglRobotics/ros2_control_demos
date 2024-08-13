@@ -74,11 +74,6 @@ private:
   double hw_stop_sec_;
   double hw_slowdown_;
   double hw_sensor_change_;
-
-  // Store the command for the simulated robot
-  std::vector<double> hw_joint_commands_;
-  std::vector<double> hw_joint_states_;
-  std::vector<double> hw_sensor_states_;
 };
 
 }  // namespace ros2_control_demo_example_4

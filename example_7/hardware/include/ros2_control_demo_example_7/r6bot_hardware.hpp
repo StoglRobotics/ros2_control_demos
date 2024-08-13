@@ -52,6 +52,10 @@ protected:
   struct FTS_Sensor
   {
     explicit FTS_Sensor(const std::string & sensor_name) : name(sensor_name) {}
+    // delete move constructor since would throw because of const std::string members
+    // but we dont want to move this anyways so const for member is ok i guess
+    FTS_Sensor(FTS_Sensor && other) = delete;
+
     const std::string name;
     const std::string force_x = "force.x";
     const std::string force_y = "force.y";
