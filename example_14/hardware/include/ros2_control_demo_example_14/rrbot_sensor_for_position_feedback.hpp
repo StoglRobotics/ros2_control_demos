@@ -80,7 +80,7 @@ private:
   // Store the command for the simulated robot
   double measured_velocity;  // Local variable, but avoid initialization on each read
   double last_measured_velocity_;
-  double hw_joint_state_;
+  std::string pos_itf_;
 
   // Timestamps to calculate position for velocity
   rclcpp::Clock clock_;

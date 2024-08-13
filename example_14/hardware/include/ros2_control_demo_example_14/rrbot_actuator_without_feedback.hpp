@@ -74,9 +74,7 @@ private:
   // Parameters for the RRBot simulation
   double hw_start_sec_;
   double hw_stop_sec_;
-
-  // Store the command for the simulated robot
-  double hw_joint_command_;
+  std::string vel_itf_;
 
   // Fake "mechanical connection" between actuator and sensor using sockets
   struct sockaddr_in address_;

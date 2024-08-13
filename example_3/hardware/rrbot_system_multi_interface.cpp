@@ -41,13 +41,6 @@ hardware_interface::CallbackReturn RRBotSystemMultiInterfaceHardware::on_init(
   hw_stop_sec_ = stod(info_.hardware_parameters["example_param_hw_stop_duration_sec"]);
   hw_slowdown_ = stod(info_.hardware_parameters["example_param_hw_slowdown"]);
   // END: This part here is for exemplary purposes - Please do not copy to your production code
-  hw_states_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_states_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_states_accelerations_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_positions_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_velocities_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  hw_commands_accelerations_.resize(info_.joints.size(), std::numeric_limits<double>::quiet_NaN());
-  control_level_.resize(info_.joints.size(), integration_level_t::POSITION);
 
   for (const hardware_interface::ComponentInfo & joint : info_.joints)
   {
@@ -96,42 +89,35 @@ hardware_interface::CallbackReturn RRBotSystemMultiInterfaceHardware::on_init(
     }
   }
 
+  // check if we have same command and state interfaces for joint this makes iterating easier
+  // first check if size is equal then we only need to iterate over one of them
+  if (joint_state_interfaces_.size() != joint_command_interfaces_.size())
+  {
+    RCLCPP_FATAL(
+      rclcpp::get_logger("RRBotSystemPositionOnlyHardware"),
+      "Expect joint CommandInterface and joint StateInterfaces to be of equal size.");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+  for (const auto & [state_itf_name, state_itf_descr] : joint_state_interfaces_)
+  {
+    if (joint_command_interfaces_.find(state_itf_name) == joint_command_interfaces_.end())
+    {
+      RCLCPP_FATAL(
+        rclcpp::get_logger("RRBotSystemPositionOnlyHardware"),
+        "Expect joint CommandInterface and joint StateInterfaces to be equal but StateInterface "
+        "includes<%s> which is not included in CommandInterfaces.",
+        state_itf_name.c_str());
+      return hardware_interface::CallbackReturn::ERROR;
+    }
+  }
+
+  // fill joints vector
+  for (const auto & joint : info_.joints)
+  {
+    joints_.emplace_back(joint.name);
+  }
+
   return hardware_interface::CallbackReturn::SUCCESS;
-}
-
-std::vector<hardware_interface::StateInterface>
-RRBotSystemMultiInterfaceHardware::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-  for (std::size_t i = 0; i < info_.joints.size(); i++)
-  {
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_states_positions_[i]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_states_velocities_[i]));
-    state_interfaces.emplace_back(hardware_interface::StateInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_ACCELERATION, &hw_states_accelerations_[i]));
-  }
-
-  return state_interfaces;
-}
-
-std::vector<hardware_interface::CommandInterface>
-RRBotSystemMultiInterfaceHardware::export_command_interfaces()
-{
-  std::vector<hardware_interface::CommandInterface> command_interfaces;
-  for (std::size_t i = 0; i < info_.joints.size(); i++)
-  {
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_POSITION, &hw_commands_positions_[i]));
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_VELOCITY, &hw_commands_velocities_[i]));
-    command_interfaces.emplace_back(hardware_interface::CommandInterface(
-      info_.joints[i].name, hardware_interface::HW_IF_ACCELERATION,
-      &hw_commands_accelerations_[i]));
-  }
-
-  return command_interfaces;
 }
 
 hardware_interface::return_type RRBotSystemMultiInterfaceHardware::prepare_command_mode_switch(
@@ -178,21 +164,21 @@ hardware_interface::return_type RRBotSystemMultiInterfaceHardware::prepare_comma
     {
       if (key.find(info_.joints[i].name) != std::string::npos)
       {
-        hw_commands_velocities_[i] = 0;
-        hw_commands_accelerations_[i] = 0;
-        control_level_[i] = integration_level_t::UNDEFINED;  // Revert to undefined
+        set_command(key + "/" + hardware_interface::HW_IF_VELOCITY, 0.0);
+        set_command(key + "/" + hardware_interface::HW_IF_ACCELERATION, 0.0);
+        control_level_ = integration_level_t::UNDEFINED;  // Revert to undefined
       }
     }
   }
   // Set the new command modes
   for (std::size_t i = 0; i < info_.joints.size(); i++)
   {
-    if (control_level_[i] != integration_level_t::UNDEFINED)
+    if (control_level_ != integration_level_t::UNDEFINED)
     {
       // Something else is using the joint! Abort!
       return hardware_interface::return_type::ERROR;
     }
-    control_level_[i] = new_modes[i];
+    control_level_ = new_modes[0];
   }
   return hardware_interface::return_type::OK;
 }
@@ -214,38 +200,24 @@ hardware_interface::CallbackReturn RRBotSystemMultiInterfaceHardware::on_activat
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
   // Set some default values
-  for (std::size_t i = 0; i < hw_states_positions_.size(); i++)
+  // we checked that joint_state_interfaces_ == joint_command_interfaces_
+  for (const auto & [itf_name, itf_descr] : joint_state_interfaces_)
   {
-    if (std::isnan(hw_states_positions_[i]))
+    if (!state_holds_value(itf_name) || std::isnan(get_state(itf_name)))
     {
-      hw_states_positions_[i] = 0;
+      set_state(itf_name, 0.0);
     }
-    if (std::isnan(hw_states_velocities_[i]))
+    if (!command_holds_value(itf_name) || std::isnan(get_command(itf_name)))
     {
-      hw_states_velocities_[i] = 0;
+      set_command(itf_name, 0.0);
     }
-    if (std::isnan(hw_states_accelerations_[i]))
-    {
-      hw_states_accelerations_[i] = 0;
-    }
-    if (std::isnan(hw_commands_positions_[i]))
-    {
-      hw_commands_positions_[i] = 0;
-    }
-    if (std::isnan(hw_commands_velocities_[i]))
-    {
-      hw_commands_velocities_[i] = 0;
-    }
-    if (std::isnan(hw_commands_accelerations_[i]))
-    {
-      hw_commands_accelerations_[i] = 0;
-    }
-    control_level_[i] = integration_level_t::UNDEFINED;
   }
+
+  control_level_ = integration_level_t::UNDEFINED;
 
   RCLCPP_INFO(
     rclcpp::get_logger("RRBotSystemMultiInterfaceHardware"), "System successfully activated! %u",
-    control_level_[0]);
+    control_level_);
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
@@ -273,9 +245,10 @@ hardware_interface::CallbackReturn RRBotSystemMultiInterfaceHardware::on_deactiv
 hardware_interface::return_type RRBotSystemMultiInterfaceHardware::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
-  for (std::size_t i = 0; i < hw_states_positions_.size(); i++)
+  // we checked that joint_state_interfaces_ == joint_command_interfaces_
+  for (const auto & joint : joints_)
   {
-    switch (control_level_[i])
+    switch (control_level_)
     {
       case integration_level_t::UNDEFINED:
         RCLCPP_INFO(
@@ -284,27 +257,36 @@ hardware_interface::return_type RRBotSystemMultiInterfaceHardware::read(
         return hardware_interface::return_type::OK;
         break;
       case integration_level_t::POSITION:
-        hw_states_accelerations_[i] = 0;
-        hw_states_velocities_[i] = 0;
-        hw_states_positions_[i] +=
-          (hw_commands_positions_[i] - hw_states_positions_[i]) / hw_slowdown_;
+        set_state(joint.acceleration(), 0.0);
+        set_state(joint.velocity(), 0.0);
+        set_state(
+          joint.position(),
+          get_state(joint.position()) +
+            (get_command(joint.position()) - get_state(joint.position()) / hw_slowdown_));
         break;
       case integration_level_t::VELOCITY:
-        hw_states_accelerations_[i] = 0;
-        hw_states_velocities_[i] = hw_commands_velocities_[i];
-        hw_states_positions_[i] += (hw_states_velocities_[i] * period.seconds()) / hw_slowdown_;
+        set_state(joint.acceleration(), 0.0);
+        set_state(joint.velocity(), get_command(joint.velocity()));
+        set_state(
+          joint.position(), get_state(joint.position()) +
+                              (get_state(joint.velocity()) * period.seconds()) / hw_slowdown_);
         break;
       case integration_level_t::ACCELERATION:
-        hw_states_accelerations_[i] = hw_commands_accelerations_[i];
-        hw_states_velocities_[i] += (hw_states_accelerations_[i] * period.seconds()) / hw_slowdown_;
-        hw_states_positions_[i] += (hw_states_velocities_[i] * period.seconds()) / hw_slowdown_;
+        set_state(joint.acceleration(), get_command(joint.acceleration()));
+        set_state(
+          joint.velocity(),
+          get_state(joint.velocity()) +
+            (get_command(joint.acceleration()) * period.seconds()) / hw_slowdown_);
+        set_state(
+          joint.position(), get_state(joint.position()) +
+                              (get_state(joint.velocity()) * period.seconds()) / hw_slowdown_);
         break;
     }
     // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
     RCLCPP_INFO(
       rclcpp::get_logger("RRBotSystemMultiInterfaceHardware"),
-      "Got pos: %.5f, vel: %.5f, acc: %.5f for joint %lu!", hw_states_positions_[i],
-      hw_states_velocities_[i], hw_states_accelerations_[i], i);
+      "Got pos: %.5f, vel: %.5f, acc: %.5f for joint %s!", get_state(joint.position()),
+      get_state(joint.velocity()), get_state(joint.acceleration()), joint.name().c_str());
     // END: This part here is for exemplary purposes - Please do not copy to your production code
   }
   return hardware_interface::return_type::OK;
@@ -314,14 +296,14 @@ hardware_interface::return_type RRBotSystemMultiInterfaceHardware::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // BEGIN: This part here is for exemplary purposes - Please do not copy to your production code
-  for (std::size_t i = 0; i < hw_commands_positions_.size(); i++)
+  for (const auto & joint : joints_)
   {
     // Simulate sending commands to the hardware
     RCLCPP_INFO(
       rclcpp::get_logger("RRBotSystemMultiInterfaceHardware"),
-      "Got the commands pos: %.5f, vel: %.5f, acc: %.5f for joint %lu, control_lvl:%u",
-      hw_commands_positions_[i], hw_commands_velocities_[i], hw_commands_accelerations_[i], i,
-      control_level_[i]);
+      "Got the commands pos: %.5f, vel: %.5f, acc: %.5f for joint %s, control_lvl:%u",
+      get_state(joint.position()), get_state(joint.velocity()), get_state(joint.acceleration()),
+      joint.name().c_str(), control_level_);
   }
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 

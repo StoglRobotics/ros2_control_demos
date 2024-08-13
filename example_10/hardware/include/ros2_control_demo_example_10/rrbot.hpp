@@ -68,11 +68,31 @@ public:
 private:
   // Parameters for the RRBot simulation
 
-  // Store the command and state interfaces for the simulated robot
-  std::vector<double> hw_commands_;
-  std::vector<double> hw_states_;
-  std::vector<double> hw_gpio_in_;
-  std::vector<double> hw_gpio_out_;
+  struct FlangeVacuum
+  {
+    explicit FlangeVacuum(const std::string & gpio_name) : name(gpio_name) {}
+    // delete move constructor since would throw because of const std::string members
+    // but we dont want to move this anyways so const for member is ok i guess
+    FlangeVacuum(FlangeVacuum && other) = delete;
+
+    const std::string name;
+    const std::string vacuum = name + "/vacuum";
+  };
+
+  struct FlangeIOs
+  {
+    explicit FlangeIOs(const std::string & gpio_name) : name(gpio_name) {}
+    // delete move constructor since would throw because of const std::string members
+    // but we dont want to move this anyways so const for member is ok i guess
+    FlangeIOs(FlangeIOs && other) = delete;
+
+    const std::string name;
+    const std::string out = name + "/analog_output1";
+    const std::string input_1 = name + "/analog_input1";
+    const std::string input_2 = name + "/analog_input2";
+  };
+  std::unique_ptr<FlangeVacuum> flange_vacuum_;
+  std::unique_ptr<FlangeIOs> flange_ios_;
 };
 
 }  // namespace ros2_control_demo_example_10

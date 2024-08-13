@@ -52,8 +52,6 @@ hardware_interface::CallbackReturn RRBotSensorPositionFeedback::on_init(
   socket_port_ = std::stoi(info_.hardware_parameters["example_param_socket_port"]);
   // END: This part here is for exemplary purposes - Please do not copy to your production code
 
-  hw_joint_state_ = std::numeric_limits<double>::quiet_NaN();
-
   const hardware_interface::ComponentInfo & joint = info_.joints[0];
   // RRBotSensorPositionFeedback has exactly one state interface and one joint
   if (joint.state_interfaces.size() != 1)
@@ -73,6 +71,7 @@ hardware_interface::CallbackReturn RRBotSensorPositionFeedback::on_init(
       joint.state_interfaces[0].name.c_str(), hardware_interface::HW_IF_POSITION);
     return hardware_interface::CallbackReturn::ERROR;
   }
+  pos_itf_ = joint.name + "/" + joint.state_interfaces[0].name;
 
   clock_ = rclcpp::Clock();
 
@@ -184,25 +183,15 @@ hardware_interface::CallbackReturn RRBotSensorPositionFeedback::on_shutdown(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface>
-RRBotSensorPositionFeedback::export_state_interfaces()
-{
-  std::vector<hardware_interface::StateInterface> state_interfaces;
-
-  state_interfaces.emplace_back(hardware_interface::StateInterface(
-    info_.joints[0].name, hardware_interface::HW_IF_POSITION, &hw_joint_state_));
-
-  return state_interfaces;
-}
-
 hardware_interface::CallbackReturn RRBotSensorPositionFeedback::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
   // set some default values for joints
-  if (std::isnan(hw_joint_state_))
+  if (!state_holds_value(pos_itf_) || std::isnan(get_state(pos_itf_)))
   {
-    hw_joint_state_ = 0;
+    set_state(pos_itf_, 0.0);
   }
+
   last_measured_velocity_ = 0;
 
   // In general after a hardware is configured it can be read
@@ -269,10 +258,11 @@ hardware_interface::return_type RRBotSensorPositionFeedback::read(
   RCLCPP_INFO(
     rclcpp::get_logger("RRBotSensorPositionFeedback"), "Got measured velocity %.5f",
     measured_velocity);
-  hw_joint_state_ += (last_measured_velocity_ * duration.seconds()) / hw_slowdown_;
+  set_state(
+    pos_itf_, get_state(pos_itf_) + (last_measured_velocity_ * duration.seconds()) / hw_slowdown_);
   RCLCPP_INFO(
     rclcpp::get_logger("RRBotSensorPositionFeedback"), "Got state %.5f for joint '%s'!",
-    hw_joint_state_, info_.joints[0].name.c_str());
+    get_state(pos_itf_), info_.joints[0].name.c_str());
 
   RCLCPP_INFO(rclcpp::get_logger("RRBotSensorPositionFeedback"), "Joints successfully read!");
   // END: This part here is for exemplary purposes - Please do not copy to your production code

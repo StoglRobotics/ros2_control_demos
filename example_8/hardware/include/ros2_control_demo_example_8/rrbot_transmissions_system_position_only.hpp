@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "hardware_interface/handle.hpp"
@@ -74,21 +75,19 @@ private:
   double actuator_slowdown_;
 
   // transmissions
-  std::vector<std::shared_ptr<transmission_interface::Transmission>> transmissions_;
+  std::unordered_map<std::string, std::shared_ptr<transmission_interface::Transmission>>
+    transmissions_;
+  std::unordered_map<std::string, hardware_interface::TransmissionInfo> joint_to_transmission_info_;
 
-  struct InterfaceData
-  {
-    explicit InterfaceData(const std::string & name);
+  std::unordered_map<std::string, std::shared_ptr<transmission_interface::JointHandle>>
+    joint_handles_;
+  std::unordered_map<std::string, std::shared_ptr<transmission_interface::ActuatorHandle>>
+    actuator_handles_;
+  std::unordered_map<std::string, std::shared_ptr<hardware_interface::StateInterface>>
+    actuator_states_;
 
-    std::string name_;
-    double command_;
-    double state_;
-
-    // this is the "sink" that will be part of the transmission Joint/Actuator handles
-    double transmission_passthrough_;
-  };
-  std::vector<InterfaceData> joint_interfaces_;
-  std::vector<InterfaceData> actuator_interfaces_;
+  std::unordered_map<std::string, std::string> actuator_to_joint_;
+  std::unordered_map<std::string, std::string> joint_to_actuator_;
 };
 
 }  // namespace ros2_control_demo_example_8
