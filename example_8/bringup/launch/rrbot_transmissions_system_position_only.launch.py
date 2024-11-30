@@ -41,6 +41,14 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
+            "use_mock_hardware",
+            default_value="false",
+            description="Use mock hardware instead of real one.",
+            choices=["true", "false"],
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
             "robot_controller",
             default_value="forward_position_controller",
             description="Robot controller to start.",
@@ -57,6 +65,7 @@ def generate_launch_description():
     # Initialize Arguments
     prefix = LaunchConfiguration("prefix")
     slowdown = LaunchConfiguration("slowdown")
+    use_mock_hardware = LaunchConfiguration("use_mock_hardware")
     robot_controller = LaunchConfiguration("robot_controller")
     gui = LaunchConfiguration("gui")
 
@@ -78,6 +87,9 @@ def generate_launch_description():
             " ",
             "slowdown:=",
             slowdown,
+            " ",
+            "use_mock_hardware:=",
+            use_mock_hardware,
         ]
     )
     robot_description = {"robot_description": robot_description_content}
